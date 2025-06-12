@@ -11,11 +11,23 @@ import openai
 
 FMP_API_URL = "https://financialmodelingprep.com/api/v3/technical_indicator/daily"
 
+# Default configuration
+RSI_PERIOD = 7
 LOW_RSI = 25
 HIGH_RSI = 80
 
+# List of common large-cap tickers used when no symbols are provided on the
+# command line. Feel free to modify as needed.
+DEFAULT_SYMBOLS = [
+    "MSFT", "NVDA", "AAPL", "AMZN", "GOOG", "META", "TSLA", "AVGO",
+    "WMT", "JPM", "LLY", "V", "NFLX", "COST", "XOM", "ORCL", "PG", "JNJ",
+    "ABBV", "KO", "ASML", "UNH", "CRM", "GE", "IBM", "CSCO", "TM", "CVX",
+    "MCD", "ACN", "SPGI", "AMAT", "ISRG", "VZ", "UPS", "NEE", "DIS", "TMO",
+    "BABA", "DE", "BLK", "SBUX", "TSM", "PDD",
+]
 
-def fetch_rsi(symbol: str, api_key: str, period: int = 14) -> float:
+
+def fetch_rsi(symbol: str, api_key: str, period: int = RSI_PERIOD) -> float:
     url = f"{FMP_API_URL}/{symbol}?period={period}&type=rsi&apikey={api_key}"
     resp = requests.get(url, timeout=10)
     resp.raise_for_status()
@@ -27,8 +39,8 @@ def fetch_rsi(symbol: str, api_key: str, period: int = 14) -> float:
 
 def analyze_with_gpt(symbol: str, rsi: float) -> str:
     prompt = (
-        f"The current RSI for {symbol} is {rsi}. "
-        "RSI below 25 is oversold, above 80 is overbought. "
+        f"The current RSI for {symbol} using a {RSI_PERIOD}-day period is {rsi}. "
+        f"RSI below {LOW_RSI} is oversold and above {HIGH_RSI} is overbought. "
         "Should we buy, sell, or wait?"
     )
     response = openai.ChatCompletion.create(
@@ -45,7 +57,7 @@ def main(symbols):
         print("FMP_API_KEY and OPENAI_API_KEY must be set in environment", file=sys.stderr)
         return 1
 
-    for sym in symbols:
+    for sym in symbols or DEFAULT_SYMBOLS:
         try:
             rsi = fetch_rsi(sym, fmp_key)
             if rsi < LOW_RSI or rsi > HIGH_RSI:
@@ -58,7 +70,9 @@ def main(symbols):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: rsi_helper.py SYMBOL [SYMBOL...]", file=sys.stderr)
-        sys.exit(1)
-    sys.exit(main(sys.argv[1:]))
+    # Symbols can be provided on the command line. If omitted, DEFAULT_SYMBOLS
+    # will be used.
+    symbols = sys.argv[1:]
+    if not symbols:
+        print("No symbols provided. Falling back to built-in list.")
+    sys.exit(main(symbols))
