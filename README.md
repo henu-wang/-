@@ -1,6 +1,6 @@
 # RSI Helper
 
-A simple tool that fetches Relative Strength Index (RSI) data from the Financial Modeling Prep API and asks GPT-4o for trading suggestions when RSI values hit configurable thresholds.
+A simple tool that fetches Relative Strength Index (RSI) data from the Financial Modeling Prep API and asks GPT-4o for trading suggestions when RSI values hit configurable thresholds. It also queries OpenAI's search model for the latest news about each stock and includes that context in the GPT-4o prompt. If a `FEISHU_WEBHOOK` is configured, the results are posted to a Feishu bot.
 
 ## Usage
 
@@ -8,7 +8,8 @@ A simple tool that fetches Relative Strength Index (RSI) data from the Financial
    ```bash
    pip install -r requirements.txt
    ```
-2. Set environment variables `FMP_API_KEY` and `OPENAI_API_KEY`.
+2. Set environment variables `FMP_API_KEY`, `OPENAI_API_KEY`, and optional
+   `FEISHU_WEBHOOK` if you want results posted to a Feishu bot.
 3. Run the tool with one or more stock symbols. If no symbols are supplied, the script falls back to a built-in list of popular tickers:
    ```bash
    python rsi_helper.py AAPL GOOGL

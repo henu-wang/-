@@ -9,6 +9,8 @@ import sys
 import requests
 import openai
 
+FEISHU_WEBHOOK = os.environ.get("FEISHU_WEBHOOK")
+
 FMP_API_URL = "https://financialmodelingprep.com/api/v3/technical_indicator/daily"
 
 # Default configuration
@@ -37,17 +39,45 @@ def fetch_rsi(symbol: str, api_key: str, period: int = RSI_PERIOD) -> float:
     return float(data[-1]["rsi"])
 
 
-def analyze_with_gpt(symbol: str, rsi: float) -> str:
+def fetch_latest_news(symbol: str) -> str:
+    """Use OpenAI's search model to gather recent news about the symbol."""
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",  # using a cheaper model for search-style queries
+        messages=[
+            {
+                "role": "system",
+                "content": "You search the web and summarize the most recent news about a stock."
+            },
+            {"role": "user", "content": f"Latest news about {symbol}"},
+        ],
+    )
+    return response["choices"][0]["message"]["content"].strip()
+
+
+def analyze_with_gpt(symbol: str, rsi: float, news: str) -> str:
     prompt = (
         f"The current RSI for {symbol} using a {RSI_PERIOD}-day period is {rsi}. "
         f"RSI below {LOW_RSI} is oversold and above {HIGH_RSI} is overbought. "
-        "Should we buy, sell, or wait?"
+        f"Recent news: {news}\n"
+        "Given this information, should we buy, sell, or wait?"
     )
     response = openai.ChatCompletion.create(
         model="gpt-4o",
         messages=[{"role": "user", "content": prompt}],
     )
     return response["choices"][0]["message"]["content"].strip()
+
+
+def send_to_feishu(content: str) -> None:
+    """Post the final analysis to Feishu if webhook is configured."""
+    if not FEISHU_WEBHOOK:
+        return
+    payload = {"msg_type": "text", "content": {"text": content}}
+    try:
+        resp = requests.post(FEISHU_WEBHOOK, json=payload, timeout=10)
+        resp.raise_for_status()
+    except Exception as exc:
+        print(f"Failed to send Feishu notification: {exc}", file=sys.stderr)
 
 
 def main(symbols):
@@ -57,16 +87,25 @@ def main(symbols):
         print("FMP_API_KEY and OPENAI_API_KEY must be set in environment", file=sys.stderr)
         return 1
 
+    results = []
     for sym in symbols or DEFAULT_SYMBOLS:
         try:
             rsi = fetch_rsi(sym, fmp_key)
+            news = fetch_latest_news(sym)
             if rsi < LOW_RSI or rsi > HIGH_RSI:
-                advice = analyze_with_gpt(sym, rsi)
-                print(f"{sym}: RSI={rsi:.2f} -> {advice}")
+                advice = analyze_with_gpt(sym, rsi, news)
+                msg = f"{sym}: RSI={rsi:.2f} -> {advice}"
             else:
-                print(f"{sym}: RSI={rsi:.2f} -> within normal range")
+                msg = f"{sym}: RSI={rsi:.2f} -> within normal range"
+            print(msg)
+            results.append(msg)
         except Exception as exc:
-            print(f"Error processing {sym}: {exc}", file=sys.stderr)
+            err = f"Error processing {sym}: {exc}"
+            print(err, file=sys.stderr)
+            results.append(err)
+
+    summary = "\n".join(results)
+    send_to_feishu(summary)
 
 
 if __name__ == "__main__":
